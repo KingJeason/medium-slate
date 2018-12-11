@@ -1,6 +1,7 @@
 import { Editor } from 'slate-react'
 import { Value } from 'slate'
 import AutoReplace from 'slate-auto-replace'
+import Prism from 'prismjs'
 
 import React from 'react'
 import initialValueAsJson from './value.json'
@@ -8,24 +9,24 @@ import initialValueAsJson from './value.json'
 // import { edit } from 'external-editor';
 
 const plugins = [
-    AutoReplace({
-        trigger: 'space',
-        before: /(\*\*)(.+)(\*\*)/,
+    // AutoReplace({
+    //     trigger: 'space',
+    //     before: /(\*\*)(.+)(\*\*)/,
 
-        change: (edite, e, matches) => {
-            console.log(edite, e, matches.before)
-            return edite
-                .addMark({
-                    type: 'bold'
-                })
-                .insertText(matches.before[2])
-                .toggleMark('bold')
-                .splitInline()
-                // .insertText('123')
-            // return
+    //     change: (edite, e, matches) => {
+    //         console.log(edite, e, matches.before)
+    //         return edite
+    //             .addMark({
+    //                 type: 'bold'
+    //             })
+    //             .insertText(matches.before[2])
+    //             .toggleMark('bold')
+    //             .splitInline()
+    //             // .insertText('123')
+    //         // return
 
-        }
-    })
+    //     }
+    // })
 ]
 /**
  * Deserialize the initial editor value.
@@ -41,7 +42,44 @@ const initialValue = Value.fromJSON(initialValueAsJson)
  *
  * @type {Component}
  */
+function getContent (token) {
+    if (typeof token == 'string') {
+        return token
+    } else if (typeof token.content == 'string') {
+        return token.content
+    } else {
+        return token.content.map(getContent).join('')
+    }
+}
+function CodeBlock (props) {
+    const { editor, node } = props
+    const language = node.data.get('language')
 
+    function onChange (event) {
+        editor.setNodeByKey(node.key, { data: { language: event.target.value } })
+    }
+    return (
+        <div style={ { position: 'relative' } }>
+            <pre>
+                <code { ...props.attributes }>{ props.children }</code>
+            </pre>
+            <div
+                contentEditable={ false }
+                style={ { position: 'absolute', top: '5px', right: '5px' } }
+            >
+                <select value={ language } onChange={ onChange }>
+                    <option value="css">CSS</option>
+                    <option value="js">JavaScript</option>
+                    <option value="html">HTML</option>
+                </select>
+            </div>
+        </div>
+    )
+}
+
+function CodeBlockLine (props) {
+    return <div { ...props.attributes }>{ props.children }</div>
+}
 class MarkdownShortcuts extends React.Component {
     /**
      * Get the block type for a series of auto-markdown shortcut `chars`.
@@ -102,6 +140,8 @@ class MarkdownShortcuts extends React.Component {
                 renderNode={ this.renderNode }
                 plugins={ plugins }
                 renderMark={ this.renderMark }
+                decorateNode={ this.decorateNode }
+
             />
         )
     }
@@ -140,6 +180,10 @@ class MarkdownShortcuts extends React.Component {
                 return <li { ...attributes }>{ children }</li>
             case 'divider-line':
                 return <div { ...attributes }><hr { ...attributes } /></div>
+            case 'code':
+                return <CodeBlock { ...props } />
+            case 'code_line':
+                return <CodeBlockLine { ...props } />
             default:
                 return next()
         }
@@ -154,6 +198,13 @@ class MarkdownShortcuts extends React.Component {
      */
 
     onKeyDown = (event, editor, next) => {
+        const { value } = editor
+        const { startBlock } = value
+        console.log(event.key, value)
+        if (event.key === 'Enter' && startBlock.type === 'code_line') {
+            editor.insertText('\n')
+            return
+        }
         switch (event.key) {
             case ' ':
                 return this.onSpace(event, editor, next)
@@ -284,6 +335,66 @@ class MarkdownShortcuts extends React.Component {
         event.preventDefault()
         editor.splitBlock().setBlocks('paragraph')
     }
+    decorateNode = (node, editor, next) => {
+        const others = next() || []
+        if (node.type != 'code') return others
+
+        const language = node.data.get('language')
+        const texts = node.getTexts().toArray()
+        const string = texts.map(t => t.text).join('\n')
+        const grammar = Prism.languages[language]
+        const tokens = Prism.tokenize(string, grammar)
+        const decorations = []
+        let startText = texts.shift()
+        let endText = startText
+        let startOffset = 0
+        let endOffset = 0
+        let start = 0
+
+        for (const token of tokens) {
+            startText = endText
+            startOffset = endOffset
+
+            const content = getContent(token)
+            const newlines = content.split('\n').length - 1
+            const length = content.length - newlines
+            const end = start + length
+
+            let available = startText.text.length - startOffset
+            let remaining = length
+
+            endOffset = startOffset + remaining
+
+            while (available < remaining && texts.length > 0) {
+                endText = texts.shift()
+                remaining = length - available
+                available = endText.text.length
+                endOffset = remaining
+            }
+
+            if (typeof token != 'string') {
+                const dec = {
+                    anchor: {
+                        key: startText.key,
+                        offset: startOffset,
+                    },
+                    focus: {
+                        key: endText.key,
+                        offset: endOffset,
+                    },
+                    mark: {
+                        type: token.type,
+                    },
+                }
+
+                decorations.push(dec)
+            }
+
+            start = end
+        }
+
+        return [...others, ...decorations]
+    }
     /**
    * Render a Slate mark.
    *
@@ -296,12 +407,34 @@ class MarkdownShortcuts extends React.Component {
         switch (mark.type) {
             case 'bold':
                 return <strong { ...attributes }>{ children }</strong>
-            case 'code':
-                return <code { ...attributes }>{ children }</code>
             case 'italic':
                 return <em { ...attributes }>{ children }</em>
             case 'underlined':
                 return <u { ...attributes }>{ children }</u>
+            case 'comment':
+                return (
+                    <span { ...attributes } style={ { opacity: '0.33' } }>
+                        { children }
+                    </span>
+                )
+            case 'keyword':
+                return (
+                    <span { ...attributes } style={ { fontWeight: 'bold' } }>
+                        { children }
+                    </span>
+                )
+            case 'tag':
+                return (
+                    <span { ...attributes } style={ { fontWeight: 'bold' } }>
+                        { children }
+                    </span>
+                )
+            case 'punctuation':
+                return (
+                    <span { ...attributes } style={ { opacity: '0.75' } }>
+                        { children }
+                    </span>
+                )
             default:
                 return next()
         }
