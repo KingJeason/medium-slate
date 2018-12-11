@@ -1,10 +1,32 @@
 import { Editor } from 'slate-react'
 import { Value } from 'slate'
+import AutoReplace from 'slate-auto-replace'
 
 import React from 'react'
 import initialValueAsJson from './value.json'
+// import { plugin } from 'postcss';
 // import { edit } from 'external-editor';
 
+const plugins = [
+    AutoReplace({
+        trigger: 'space',
+        before: /(\*\*)(.+)(\*\*)/,
+
+        change: (edite, e, matches) => {
+            console.log(edite, e, matches.before)
+            return edite
+                .addMark({
+                    type: 'bold'
+                })
+                .insertText(matches.before[2])
+                .toggleMark('bold')
+                .splitInline()
+                // .insertText('123')
+            // return
+
+        }
+    })
+]
 /**
  * Deserialize the initial editor value.
  *
@@ -55,6 +77,14 @@ class MarkdownShortcuts extends React.Component {
                 return null
         }
     }
+    getInline = key => {
+        switch (key) {
+            case '**()**':
+                return 'bold'
+            default:
+                break;
+        }
+    }
 
     /**
      *
@@ -70,6 +100,8 @@ class MarkdownShortcuts extends React.Component {
                 defaultValue={ initialValue }
                 onKeyDown={ this.onKeyDown }
                 renderNode={ this.renderNode }
+                plugins={ plugins }
+                renderMark={ this.renderMark }
             />
         )
     }
@@ -146,15 +178,14 @@ class MarkdownShortcuts extends React.Component {
     onSpace = (event, editor, next) => {
         const { value } = editor
         const { selection } = value
-        console.log(selection.isExpanded)
+        console.log(value)
         if (selection.isExpanded) return next() // 如果是选中状态的话则继续
 
         const { startBlock } = value
+        // focusText
         const { start } = selection
-        console.log(start.offset, startBlock.text)
         const chars = startBlock.text.slice(0, start.offset).replace(/\s*/g, '')
         const type = this.getType(chars)
-        console.log(type, chars)
         if (!type) return next()
         if (type === 'list-item' && startBlock.type === 'list-item') return next()
         event.preventDefault()
@@ -186,7 +217,9 @@ class MarkdownShortcuts extends React.Component {
         const { value } = editor
         const { selection } = value
         console.log(selection, value)
-
+        // value.marks.forEach((item)=>{
+        //     console.log(item)
+        // })
         if (selection.isExpanded) return next()
         if (selection.start.offset !== 0) return next()
         const { startBlock } = value
@@ -195,7 +228,7 @@ class MarkdownShortcuts extends React.Component {
             editor.delete(value.previousBlock)
             event.preventDefault()
             editor.setBlocks('paragraph')
-            return 
+            return
         }
         if (startBlock.type === 'paragraph') {
             return next()
@@ -249,8 +282,29 @@ class MarkdownShortcuts extends React.Component {
         }
 
         event.preventDefault()
-        console.log('split')
         editor.splitBlock().setBlocks('paragraph')
+    }
+    /**
+   * Render a Slate mark.
+   *
+   * @param {Object} props
+   * @return {Element}
+   */
+    renderMark = (props, editor, next) => {
+        const { children, mark, attributes } = props
+
+        switch (mark.type) {
+            case 'bold':
+                return <strong { ...attributes }>{ children }</strong>
+            case 'code':
+                return <code { ...attributes }>{ children }</code>
+            case 'italic':
+                return <em { ...attributes }>{ children }</em>
+            case 'underlined':
+                return <u { ...attributes }>{ children }</u>
+            default:
+                return next()
+        }
     }
 }
 

@@ -91,7 +91,10 @@
                         "object": "text",
                         "leaves": [
                             {
-                                "text": ""
+                                "text": "abcdefg"
+                            },
+                            {
+                                "text": "**fdf**"
                             }
                         ]
                     }
