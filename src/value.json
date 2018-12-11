@@ -276,6 +276,27 @@
                         ]
                     }
                 ]
+            },
+            {
+                "object": "block",
+                "type": "paragraph",
+                "nodes": [
+                    {
+                        "object": "text",
+                        "leaves": [
+                            {
+                                "text": ""
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "object": "block",
+                "type": "code",
+                "data": {
+                    "language": "js"
+                }
             }
         ]
     }

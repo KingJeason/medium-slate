@@ -111,6 +111,8 @@ class MarkdownShortcuts extends React.Component {
                 return 'heading-five'
             case '######':
                 return 'heading-six'
+            case '```':
+                return 'code'
             default:
                 return null
         }
@@ -237,19 +239,26 @@ class MarkdownShortcuts extends React.Component {
         const { start } = selection
         const chars = startBlock.text.slice(0, start.offset).replace(/\s*/g, '')
         const type = this.getType(chars)
+        console.log(type)
         if (!type) return next()
         if (type === 'list-item' && startBlock.type === 'list-item') return next()
         event.preventDefault()
-
-        editor.setBlocks(type)
-
+        if(type === 'code'){
+            editor.setBlocks({
+                type: 'code',
+                data: {
+                    "language": "js"
+                }
+            })
+        }else{
+            editor.setBlocks(type)
+        }
         if (type === 'list-item') {
             editor.wrapBlock('bulleted-list')
         }
 
         editor.moveFocusToStartOfNode(startBlock).delete()
         if (type === 'divider-line') {
-            console.log('1231')
             editor.splitBlock().setBlocks('paragraph')
             // return next()
         }
